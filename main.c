@@ -1,7 +1,7 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <stdlib.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 typedef struct {
@@ -18,7 +18,9 @@ input_buffer_t* new_input_buffer() {
     return bf;
 }
 
-void print_prompt() { printf("db > "); }
+void print_prompt() {
+    printf("db > ");
+}
 
 void read_input(input_buffer_t* input) {
     ssize_t bytes_read = getline(&(input->buffer), &(input->buffer_length), stdin);
@@ -28,14 +30,11 @@ void read_input(input_buffer_t* input) {
         exit(EXIT_FAILURE);
     }
 
-    input->input_length = bytes_read - 1;   // Ignore trailing newline
+    input->input_length = bytes_read - 1; // Ignore trailing newline
     input->buffer[bytes_read - 1] = 0;
 }
 
-typedef enum {
-    META_COMMAND_SUCCESS,
-    META_COMMAND_UNRECOGNIZED_COMMAND
-} meta_command_result_t;
+typedef enum { META_COMMAND_SUCCESS, META_COMMAND_UNRECOGNIZED_COMMAND } meta_command_result_t;
 
 meta_command_result_t do_meta_command(input_buffer_t* input) {
     if (strcmp(input->buffer, ".exit") == 0) {
@@ -44,7 +43,6 @@ meta_command_result_t do_meta_command(input_buffer_t* input) {
         return META_COMMAND_UNRECOGNIZED_COMMAND;
     }
 }
-
 
 const uint32_t COLUMN_USERNAME_SIZE = 32;
 const uint32_t COLUMN_EMAIL_SIZE = 255;
@@ -59,7 +57,7 @@ void print_row(row_t* row) {
     printf("(%d, %s, %s)\n", row->id, row->username, row->email);
 }
 
-typedef enum { STATEMENT_INSERT, STATEMENT_SELECT } statement_type_t ;
+typedef enum { STATEMENT_INSERT, STATEMENT_SELECT } statement_type_t;
 typedef struct {
     statement_type_t type;
     row_t row_to_insert;
@@ -70,7 +68,8 @@ typedef enum { PREPARE_SUCCESS, PREPARE_UNRECOGNIZED_STATEMENT, PREPARE_SYNTAX_E
 prepare_result_t prepare_statement(input_buffer_t* input, statement_t* st) {
     if (strncmp(input->buffer, "insert", 6) == 0) {
         st->type = STATEMENT_INSERT;
-        int assigned = sscanf(input->buffer, "insert %d %s %s", &(st->row_to_insert.id), st->row_to_insert.username,  st->row_to_insert.email);
+        int assigned = sscanf(input->buffer, "insert %d %s %s", &(st->row_to_insert.id), st->row_to_insert.username,
+                              st->row_to_insert.email);
         if (assigned != 3) {
             return PREPARE_SYNTAX_ERROR;
         }
@@ -82,7 +81,6 @@ prepare_result_t prepare_statement(input_buffer_t* input, statement_t* st) {
     }
     return PREPARE_UNRECOGNIZED_STATEMENT;
 }
-
 
 #define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
 
@@ -129,10 +127,7 @@ void* row_slot(table_t* table, uint32_t row_num) {
     return page + byte_offset;
 }
 
-typedef enum {
-    EXECUTE_SUCCESS,
-    EXECUTE_TABLE_FULL
-} execute_result_t;
+typedef enum { EXECUTE_SUCCESS, EXECUTE_TABLE_FULL } execute_result_t;
 
 execute_result_t execute_insert(statement_t* st, table_t* table) {
     if (table->num_rows >= TABLE_MAX_ROWS) {
@@ -159,12 +154,11 @@ table_t* new_table() {
     return table;
 }
 
-
 execute_result_t execute_statement(statement_t* st, table_t* table) {
     switch (st->type) {
-        case (STATEMENT_INSERT) :
+        case (STATEMENT_INSERT):
             return execute_insert(st, table);
-        case (STATEMENT_SELECT) :
+        case (STATEMENT_SELECT):
             return execute_select(st, table);
     }
 }
@@ -190,13 +184,13 @@ int main(int argc, char* argv[]) {
 
         statement_t st;
         switch (prepare_statement(input, &st)) {
-            case (PREPARE_SUCCESS) :
+            case (PREPARE_SUCCESS):
                 break;
-            case (PREPARE_SYNTAX_ERROR) :
+            case (PREPARE_SYNTAX_ERROR):
                 printf("Syntax error. Could not parse statement.\n");
                 break;
-            case (PREPARE_UNRECOGNIZED_STATEMENT) :
-                printf("Unrecognized keyword at start of '%s'.\n",  input->buffer);
+            case (PREPARE_UNRECOGNIZED_STATEMENT):
+                printf("Unrecognized keyword at start of '%s'.\n", input->buffer);
                 continue;
         }
 
