@@ -5,4 +5,4 @@ PointerAlignment: Left
 IndentWidth: 4
 ColumnLimit: 120
 AllowShortFunctionsOnASingleLine: None
-IndentCaseLabels: true
+IndentCaseLabels: false

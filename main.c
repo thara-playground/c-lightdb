@@ -1,10 +1,10 @@
+#include <fcntl.h>
+#include <mhash.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
-#include <mhash.h>
 
 typedef struct {
     char* buffer;
@@ -55,14 +55,20 @@ typedef struct {
     row_t row_to_insert;
 } statement_t;
 
-typedef enum { PREPARE_SUCCESS, PREPARE_NEGATIVE_ID, PREPARE_STRING_TOO_LONG, PREPARE_UNRECOGNIZED_STATEMENT, PREPARE_SYNTAX_ERROR } prepare_result_t;
+typedef enum {
+    PREPARE_SUCCESS,
+    PREPARE_NEGATIVE_ID,
+    PREPARE_STRING_TOO_LONG,
+    PREPARE_UNRECOGNIZED_STATEMENT,
+    PREPARE_SYNTAX_ERROR
+} prepare_result_t;
 
 prepare_result_t prepare_insert(input_buffer_t* input, statement_t* st) {
     st->type = STATEMENT_INSERT;
-    char *keyword = strtok(input->buffer, " ");
-    char *id_str = strtok(NULL, " ");
-    char *username = strtok(NULL, " ");
-    char *email= strtok(NULL, " ");
+    char* keyword = strtok(input->buffer, " ");
+    char* id_str = strtok(NULL, " ");
+    char* username = strtok(NULL, " ");
+    char* email = strtok(NULL, " ");
 
     if (id_str == NULL || username == NULL || email == NULL) {
         return PREPARE_SYNTAX_ERROR;
@@ -79,7 +85,7 @@ prepare_result_t prepare_insert(input_buffer_t* input, statement_t* st) {
         return PREPARE_STRING_TOO_LONG;
     }
 
-    st->row_to_insert.id = (uint32_t) id;
+    st->row_to_insert.id = (uint32_t)id;
     strcpy(st->row_to_insert.username, username);
     strcpy(st->row_to_insert.email, email);
     return PREPARE_SUCCESS;
@@ -144,7 +150,7 @@ void* get_page(pager_t* pager, uint32_t page_num) {
     if (pager->pages[page_num] == NULL) {
         // Cache miss. Allocate memory and load from file.
         void* page = malloc(PAGE_SIZE);
-        uint32_t num_pages = (uint32_t) (pager->file_length / PAGE_SIZE);
+        uint32_t num_pages = (uint32_t)(pager->file_length / PAGE_SIZE);
 
         // We might save a partial page at the end of the file
         if (pager->file_length % PAGE_SIZE) {
@@ -285,13 +291,12 @@ void db_close(table_t* table) {
 
 execute_result_t execute_statement(statement_t* st, table_t* table) {
     switch (st->type) {
-        case (STATEMENT_INSERT):
-            return execute_insert(st, table);
-        case (STATEMENT_SELECT):
-            return execute_select(st, table);
+    case (STATEMENT_INSERT):
+        return execute_insert(st, table);
+    case (STATEMENT_SELECT):
+        return execute_select(st, table);
     }
 }
-
 
 typedef enum { META_COMMAND_SUCCESS, META_COMMAND_UNRECOGNIZED_COMMAND } meta_command_result_t;
 
@@ -321,39 +326,39 @@ int main(int argc, char* argv[]) {
 
         if (input->buffer[0] == '.') {
             switch (do_meta_command(input, table)) {
-                case (META_COMMAND_SUCCESS):
-                    continue;
-                case (META_COMMAND_UNRECOGNIZED_COMMAND):
-                    printf("Unrecognized command '%s'\n", input->buffer);
-                    continue;
+            case (META_COMMAND_SUCCESS):
+                continue;
+            case (META_COMMAND_UNRECOGNIZED_COMMAND):
+                printf("Unrecognized command '%s'\n", input->buffer);
+                continue;
             }
         }
 
         statement_t st;
         switch (prepare_statement(input, &st)) {
-            case (PREPARE_SUCCESS):
-                break;
-            case (PREPARE_NEGATIVE_ID):
-                printf("ID must be positive.\n");
-                continue;
-            case (PREPARE_STRING_TOO_LONG):
-                printf("String is too long.\n");
-                continue;
-            case (PREPARE_SYNTAX_ERROR):
-                printf("Syntax error. Could not parse statement.\n");
-                break;
-            case (PREPARE_UNRECOGNIZED_STATEMENT):
-                printf("Unrecognized keyword at start of '%s'.\n", input->buffer);
-                continue;
+        case (PREPARE_SUCCESS):
+            break;
+        case (PREPARE_NEGATIVE_ID):
+            printf("ID must be positive.\n");
+            continue;
+        case (PREPARE_STRING_TOO_LONG):
+            printf("String is too long.\n");
+            continue;
+        case (PREPARE_SYNTAX_ERROR):
+            printf("Syntax error. Could not parse statement.\n");
+            break;
+        case (PREPARE_UNRECOGNIZED_STATEMENT):
+            printf("Unrecognized keyword at start of '%s'.\n", input->buffer);
+            continue;
         }
 
         switch (execute_statement(&st, table)) {
-            case (EXECUTE_SUCCESS):
-                printf("Executed.\n");
-                break;
-            case (EXECUTE_TABLE_FULL):
-                printf("Error: Table full.\n");
-                break;
+        case (EXECUTE_SUCCESS):
+            printf("Executed.\n");
+            break;
+        case (EXECUTE_TABLE_FULL):
+            printf("Error: Table full.\n");
+            break;
         }
     }
 
