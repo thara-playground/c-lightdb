@@ -73,18 +73,38 @@ class TestDB < Test::Unit::TestCase
     ]
   end
 
-def test_prints_an_error_message_if_id_is_negative
-  script = [
-    "insert -1 cstack foo@bar.com",
-    "select",
-    ".exit",
-  ]
-  result = run_script(script)
-  assert_equal result, [
-    "db > ID must be positive.",
-    "db > Executed.",
-    "db > ",
-  ]
-end
+  def test_prints_an_error_message_if_id_is_negative
+    script = [
+      "insert -1 cstack foo@bar.com",
+      "select",
+      ".exit",
+    ]
+    result = run_script(script)
+    assert_equal result, [
+      "db > ID must be positive.",
+      "db > Executed.",
+      "db > ",
+    ]
+  end
+
+  def test_keeps_data_after_closing_connection
+    result1 = run_script([
+      "insert 1 user1 person1@example.com",
+      ".exit",
+    ])
+    assert_equal result1, [
+      "db > Executed.",
+      "db > ",
+    ]
+    result2 = run_script([
+      "select",
+      ".exit",
+    ])
+    assert_equal result2, [
+      "db > (1, user1, person1@example.com)",
+      "Executed.",
+      "db > ",
+    ]
+  end
 
 end
