@@ -1,10 +1,7 @@
 #include <fcntl.h>
 #include <mhash.h>
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+
+#include "btree.h"
 
 typedef struct {
     char* buffer;
@@ -35,15 +32,6 @@ void read_input(input_buffer_t* input) {
     input->input_length = bytes_read - 1; // Ignore trailing newline
     input->buffer[bytes_read - 1] = 0;
 }
-
-const uint32_t COLUMN_USERNAME_SIZE = 32;
-const uint32_t COLUMN_EMAIL_SIZE = 255;
-
-typedef struct {
-    uint32_t id;
-    char username[COLUMN_USERNAME_SIZE + 1];
-    char email[COLUMN_EMAIL_SIZE + 1];
-} row_t;
 
 void print_row(row_t* row) {
     printf("(%d, %s, %s)\n", row->id, row->username, row->email);
@@ -102,17 +90,6 @@ prepare_result_t prepare_statement(input_buffer_t* input, statement_t* st) {
     return PREPARE_UNRECOGNIZED_STATEMENT;
 }
 
-#define size_of_attribute(Struct, Attribute) sizeof(((Struct*)0)->Attribute)
-
-const uint32_t ID_SIZE = size_of_attribute(row_t, id);
-const uint32_t USERNAME_SIZE = size_of_attribute(row_t, username);
-const uint32_t EMAIL_SIZE = size_of_attribute(row_t, email);
-
-const uint32_t ID_OFFSET = 0;
-const uint32_t USERNAME_OFFSET = ID_OFFSET + ID_SIZE;
-const uint32_t EMAIL_OFFSET = USERNAME_OFFSET + USERNAME_SIZE;
-const uint32_t ROW_SIZE = ID_SIZE + USERNAME_SIZE + EMAIL_SIZE;
-
 void serialize_row(row_t* src, void* dest) {
     memcpy(dest + ID_OFFSET, &(src->id), ID_SIZE);
     memcpy(dest + USERNAME_OFFSET, &(src->username), USERNAME_SIZE);
@@ -125,40 +102,45 @@ void deserialize_row(void* src, row_t* dest) {
     memcpy(&(dest->email), src + EMAIL_OFFSET, EMAIL_SIZE);
 }
 
-const uint32_t PAGE_SIZE = 4096;
-const uint32_t TABLE_MAX_PAGES = 100;
-const uint32_t ROWS_PER_PAGE = PAGE_SIZE / ROW_SIZE;
-const uint32_t TABLE_MAX_ROWS = ROWS_PER_PAGE * TABLE_MAX_PAGES;
-
 typedef struct {
     int file_descriptor;
     off_t file_length;
+    uint32_t num_pages;
     void* pages[TABLE_MAX_PAGES];
 } pager_t;
 
 typedef struct {
     pager_t* pager;
-    uint32_t num_rows;
+    uint32_t root_page_num;
 } table_t;
 
 typedef struct {
     table_t* table;
-    uint32_t row_num;
+    uint32_t page_num;
+    uint32_t cell_num;
     bool end_of_table;  // Indicates a position one past the last element
 } cursor_t;
 
 cursor_t* table_start(table_t* table) {
     cursor_t* cur = malloc(sizeof(cursor_t));
     cur->table = table;
-    cur->row_num = 0;
-    cur->end_of_table = (table->num_rows == 0);
+    cur->page_num = table->root_page_num;
+    cur->cell_num = 0;
+
+    void* root_node = get_page(table->pager, table->root_page_num);
+    uint32_t num_cells = *leaf_node_num_cells(root_node);
+    cur->end_of_table = (num_cells == 0);
     return cur;
 }
 
 cursor_t* table_end(table_t* table) {
     cursor_t* cur = malloc(sizeof(cursor_t));
     cur->table = table;
-    cur->row_num = table->num_rows;
+    cur->page_num = table->root_page_num;
+
+    void* root_node = get_page(table->pager, table->root_page_num);
+    uint32_t num_cells = *leaf_node_num_cells(root_node);
+    cur->cell_num = num_cells;
     cur->end_of_table = true;
     return cur;
 }
@@ -189,23 +171,27 @@ void* get_page(pager_t* pager, uint32_t page_num) {
         }
 
         pager->pages[page_num] = page;
+
+        if (page_num >= pager->num_pages) {
+            pager->num_pages = page_num + 1;
+        }
     }
 
     return pager->pages[page_num];
 }
 
 void* cursor_value(cursor_t* cursor) {
-    uint32_t row_num = cursor->row_num;
-    uint32_t page_num = row_num / ROWS_PER_PAGE;
+    uint32_t page_num = cursor->page_num;
     void* page = get_page(cursor->table->pager, page_num);
-    uint32_t row_offset = row_num % ROWS_PER_PAGE;
-    uint32_t byte_offset = row_offset * ROW_SIZE;
-    return page + byte_offset;
+    return leaf_node_value(page, cursor->cell_num);
 }
 
 void cursor_next(cursor_t* cursor) {
-    cursor->row_num += 1;
-    if (cursor->table->num_rows <= cursor->row_num) {
+    uint32_t page_num = cursor->page_num;
+    void* page = get_page(cursor->table->pager, page_num);
+
+    cursor->cell_num += 1;
+    if (cursor->cell_num >= (*leaf_node_num_cells(page))) {
         cursor->end_of_table = true;
     }
 }
@@ -248,6 +234,12 @@ pager_t* pager_open(const char* filename) {
     pager_t* pager = malloc(sizeof(pager_t));
     pager->file_descriptor = fd;
     pager->file_length = file_length;
+    pager->num_pages = (uint32_t) (file_length / PAGE_SIZE);
+
+    if (file_length % PAGE_SIZE != 0) {
+        printf("Db file is not a whole number of pages. Corrupt file.\n");
+        exit(EXIT_FAILURE);
+    }
 
     for (uint32_t i = 0; i < TABLE_MAX_PAGES; i++) {
         pager->pages[i] = NULL;
@@ -265,7 +257,7 @@ table_t* db_open(const char* filename) {
     return table;
 }
 
-void pager_flush(pager_t* pager, uint32_t page_num, uint32_t size) {
+void pager_flush(pager_t* pager, uint32_t page_num) {
     if (pager->pages[page_num] == NULL) {
         printf("Tried to flush null page\n");
         exit(EXIT_FAILURE);
@@ -277,7 +269,7 @@ void pager_flush(pager_t* pager, uint32_t page_num, uint32_t size) {
         exit(EXIT_FAILURE);
     }
 
-    ssize_t bytes_written = write(pager->file_descriptor, pager->pages[page_num], size);
+    ssize_t bytes_written = write(pager->file_descriptor, pager->pages[page_num], PAGE_SIZE);
     if (bytes_written == -1) {
         printf("Error writing: %d\n", errno);
         exit(EXIT_FAILURE);
@@ -288,25 +280,13 @@ void db_close(table_t* table) {
     pager_t* pager = table->pager;
     uint32_t num_full_pages = table->num_rows / ROWS_PER_PAGE;
 
-    for (uint32_t i = 0; i < num_full_pages; i++) {
+    for (uint32_t i = 0; i < pager->num_pages; i++) {
         if (pager->pages[i] == NULL) {
             continue;
         }
-        pager_flush(pager, i, PAGE_SIZE);
+        pager_flush(pager, i);
         free(pager->pages[i]);
         pager->pages[i] = NULL;
-    }
-
-    // There may be a partial page to write to the end of the file.
-    // This should not be needed after we switch to a B-tree.
-    uint32_t num_additional_rows = table->num_rows % ROWS_PER_PAGE;
-    if (0 < num_additional_rows) {
-        uint32_t page_num = num_full_pages;
-        if (pager->pages[page_num] != NULL) {
-            pager_flush(pager, page_num, num_additional_rows * ROW_SIZE);
-            free(pager->pages[page_num]);
-            pager->pages[page_num] = NULL;
-        }
     }
 
     int result = close(pager->file_descriptor);
