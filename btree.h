@@ -12,9 +12,9 @@ typedef enum { NODE_INTERNAL, NODE_LEAF } node_type_t;
 /*
  * Common Node Header Layout
  */
-const uint32_t NODE_TYPE_SIZE = sizeof(uint32_t);
+const uint32_t NODE_TYPE_SIZE = sizeof(uint8_t);
 const uint32_t NODE_TYPE_OFFSET = 0;
-const uint32_t IS_ROOT_SIZE = sizeof(uint32_t);
+const uint32_t IS_ROOT_SIZE = sizeof(uint8_t);
 const uint32_t IS_ROOT_OFFSET = NODE_TYPE_SIZE;
 const uint32_t PARENT_POINTER_SIZE = sizeof(uint32_t);
 const uint32_t PARENT_POINTER_OFFSET = IS_ROOT_OFFSET + IS_ROOT_OFFSET;
@@ -54,7 +54,6 @@ void* leaf_node_value(void* node, uint32_t cell_num) {
     return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
-void* initilize_leaf_node(void* node) {
+void initilize_leaf_node(void* node) {
     *leaf_node_num_cells(node) = 0;
 }
-
