@@ -123,6 +123,36 @@ typedef struct {
 
 void* get_page(pager_t* pager, uint32_t page_num);
 
+cursor_t* leaf_node_find(table_t* table, uint32_t page_num, uint32_t key) {
+    void* node = get_page(table->pager, page_num);
+    uint32_t num_cells = *leaf_node_num_cells(node);
+
+    cursor_t* cur = malloc(sizeof(cursor_t));
+    cur->table = table;
+    cur->page_num = page_num;
+
+    // Binary Search
+    uint32_t min_index = 0;
+    uint32_t one_past_max_index = num_cells;
+
+    while (one_past_max_index != min_index) {
+        uint32_t index = (min_index + one_past_max_index) / 2;
+        uint32_t key_at_index = *leaf_node_key(node, index);
+        if (key == key_at_index) {
+            cur->cell_num = index;
+            return cur;
+        }
+        if (key < key_at_index) {
+            one_past_max_index = index;
+        } else {
+            min_index = index + 1;
+        }
+    }
+
+    cur->cell_num = min_index;
+    return cur;
+}
+
 cursor_t* table_start(table_t* table) {
     cursor_t* cur = malloc(sizeof(cursor_t));
     cur->table = table;
@@ -135,16 +165,16 @@ cursor_t* table_start(table_t* table) {
     return cur;
 }
 
-cursor_t* table_end(table_t* table) {
-    cursor_t* cur = malloc(sizeof(cursor_t));
-    cur->table = table;
-    cur->page_num = table->root_page_num;
+cursor_t* table_find(table_t* table, uint32_t key) {
+    uint32_t root_page_num = table->root_page_num;
+    void* root_node = get_page(table->pager, root_page_num);
 
-    void* root_node = get_page(table->pager, table->root_page_num);
-    uint32_t num_cells = *leaf_node_num_cells(root_node);
-    cur->cell_num = num_cells;
-    cur->end_of_table = true;
-    return cur;
+    if (get_node_type(root_node) == NODE_LEAF) {
+        return leaf_node_find(table, root_page_num, key);
+    } else {
+        printf("Need to implement searching an internal node.\n");
+        exit(EXIT_FAILURE);
+    }
 }
 
 void* get_page(pager_t* pager, uint32_t page_num) {
@@ -220,15 +250,25 @@ void leaf_node_insert(cursor_t* cursor, uint32_t key, row_t* value) {
     serialize_row(value, leaf_node_value(node, cursor->cell_num));
 }
 
-typedef enum { EXECUTE_SUCCESS, EXECUTE_TABLE_FULL } execute_result_t;
+typedef enum { EXECUTE_SUCCESS, EXECUTE_TABLE_FULL, EXECUTE_DUPLICATE_KEY } execute_result_t;
 
 execute_result_t execute_insert(statement_t* st, table_t* table) {
     void* node = get_page(table->pager, table->root_page_num);
-    if (LEAF_NODE_MAX_CELLS <= (*leaf_node_num_cells(node))) {
+    uint32_t num_cells = (*leaf_node_num_cells(node));
+    if (LEAF_NODE_MAX_CELLS <= num_cells) {
         return EXECUTE_TABLE_FULL;
     }
     row_t* row = &(st->row_to_insert);
-    cursor_t* cur = table_end(table);
+    uint32_t key = row->id;
+    cursor_t* cur = table_find(table, key);
+
+    if (cur->cell_num < num_cells) {
+        uint32_t key_at_index = *leaf_node_key(node, cur->cell_num);
+        if (key_at_index == key) {
+            return EXECUTE_DUPLICATE_KEY;
+        }
+    }
+
     leaf_node_insert(cur, row->id, row);
 
     free(cur);
@@ -281,7 +321,7 @@ table_t* db_open(const char* filename) {
     if (pager->num_pages == 0) {
         // New database file. Initialze page 0 as leaf node.
         void* root_node = get_page(pager, 0);
-        initilize_leaf_node(root_node);
+        initialize_leaf_node(root_node);
     }
     return table;
 }
@@ -424,6 +464,9 @@ int main(int argc, char* argv[]) {
         switch (execute_statement(&st, table)) {
         case (EXECUTE_SUCCESS):
             printf("Executed.\n");
+            break;
+        case (EXECUTE_DUPLICATE_KEY):
+            printf("Error: Duplicate key.\n");
             break;
         case (EXECUTE_TABLE_FULL):
             printf("Error: Table full.\n");
