@@ -36,14 +36,14 @@ class TestDB < Test::Unit::TestCase
     ]
   end
 
-  def test_prints_error_message_when_table_is_full
-    script = (1..1401).map do |i|
-      "insert #{i} user#{i} person#{i}@example.com"
-    end
-    script << ".exit"
-    result = run_script(script)
-    assert_equal result[-2], 'db > Error: Table full.'
-  end
+  # def test_prints_error_message_when_table_is_full
+  #   script = (1..1401).map do |i|
+  #     "insert #{i} user#{i} person#{i}@example.com"
+  #   end
+  #   script << ".exit"
+  #   result = run_script(script)
+  #   assert_equal result[-2], 'db > Error: Table full.'
+  # end
 
   def test_allows_inserting_strings_that_are_the_maximum_length
     long_username = "a"*32
@@ -146,10 +146,10 @@ class TestDB < Test::Unit::TestCase
       "db > Executed.",
       "db > Executed.",
       "db > Tree:",
-      "leaf (size 3)",
-      "  - 0 : 1",
-      "  - 1 : 2",
-      "  - 2 : 3",
+      "- leaf (size 3)",
+      "  - 1",
+      "  - 2",
+      "  - 3",
       "db > "
     ]
   end
@@ -170,5 +170,38 @@ class TestDB < Test::Unit::TestCase
       "db > ",
     ]
   end
+  
+  def test_allows_printing_out_the_structure_of_a_3_leaf_node_btree
+    script = (1..14).map do |i|
+      "insert #{i} user#{i} person#{i}@example.com"
+    end
+    script << ".btree"
+    script << "insert 15 user15 person15@example.com"
+    script << ".exit"
+    result = run_script(script)
+    assert_equal result[14..(result.length)], [
+      "db > Tree:",
+      "- internal (size 1)",
+      "  - leaf (size 7)",
+      "    - 1",
+      "    - 2",
+      "    - 3",
+      "    - 4",
+      "    - 5",
+      "    - 6",
+      "    - 7",
+      "- key 7",
+      "  - leaf (size 7)",
+      "    - 8",
+      "    - 9",
+      "    - 10",
+      "    - 11",
+      "    - 12",
+      "    - 13",
+      "    - 14",
+      "db > Need to implement searching an internal node",
+    ]
+  end
+
 
 end
