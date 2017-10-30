@@ -6,7 +6,11 @@ def run_script(commands, dbfile=nil)
   raw_output = nil
   IO.popen("./cmake-build-debug/lightdb " + filename, "r+") do |pipe|
     commands.each do |command|
-      pipe.puts command
+        begin
+          pipe.puts command
+        rescue Errno::EPIPE
+          break
+        end
     end
 
     pipe.close_write
@@ -36,14 +40,17 @@ class TestDB < Test::Unit::TestCase
     ]
   end
 
-  # def test_prints_error_message_when_table_is_full
-  #   script = (1..1401).map do |i|
-  #     "insert #{i} user#{i} person#{i}@example.com"
-  #   end
-  #   script << ".exit"
-  #   result = run_script(script)
-  #   assert_equal result[-2], 'db > Error: Table full.'
-  # end
+  def test_prints_error_message_when_table_is_full
+    script = (1..1401).map do |i|
+      "insert #{i} user#{i} person#{i}@example.com"
+    end
+    script << ".exit"
+    result = run_script(script)
+    assert_equal result.last(2), [
+      "db > Executed.",
+      "db > Need to implement updating parent after split",
+    ]
+  end
 
   def test_allows_inserting_strings_that_are_the_maximum_length
     long_username = "a"*32
@@ -199,7 +206,8 @@ class TestDB < Test::Unit::TestCase
       "    - 12",
       "    - 13",
       "    - 14",
-      "db > Need to implement searching an internal node",
+      "db > Executed.",
+      "db > ",
     ]
   end
 
