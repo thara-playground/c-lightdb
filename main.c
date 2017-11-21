@@ -180,18 +180,6 @@ cursor_t* internal_node_find(table_t* table, uint32_t page_num, uint32_t key) {
     }
 }
 
-cursor_t* table_start(table_t* table) {
-    cursor_t* cur = malloc(sizeof(cursor_t));
-    cur->table = table;
-    cur->page_num = table->root_page_num;
-    cur->cell_num = 0;
-
-    void* root_node = get_page(table->pager, table->root_page_num);
-    uint32_t num_cells = *leaf_node_num_cells(root_node);
-    cur->end_of_table = (num_cells == 0);
-    return cur;
-}
-
 cursor_t* table_find(table_t* table, uint32_t key) {
     uint32_t root_page_num = table->root_page_num;
     void* root_node = get_page(table->pager, root_page_num);
@@ -201,6 +189,15 @@ cursor_t* table_find(table_t* table, uint32_t key) {
     } else {
         return internal_node_find(table, root_page_num, key);
     }
+}
+
+cursor_t* table_start(table_t* table) {
+    cursor_t* cur = table_find(table, 0);
+
+    void* node = get_page(table->pager, cur->page_num);
+    uint32_t num_cells = *leaf_node_num_cells(node);
+    cur->end_of_table = (num_cells == 0);
+    return cur;
 }
 
 void* get_page(pager_t* pager, uint32_t page_num) {
@@ -244,13 +241,22 @@ void* cursor_value(cursor_t* cursor) {
     return leaf_node_value(page, cursor->cell_num);
 }
 
+// cursor_advance
 void cursor_next(cursor_t* cursor) {
     uint32_t page_num = cursor->page_num;
     void* page = get_page(cursor->table->pager, page_num);
 
     cursor->cell_num += 1;
     if (cursor->cell_num >= (*leaf_node_num_cells(page))) {
-        cursor->end_of_table = true;
+        // Advance to next leaf node
+        uint32_t next_page_num = *leaf_node_next_leaf(page);
+        if (next_page_num == 0) {
+            // This was rightmost leaf
+            cursor->end_of_table = true;
+        } else {
+            cursor->page_num = next_page_num;
+            cursor->cell_num = 0;
+        }
     }
 }
 
@@ -279,6 +285,8 @@ void leaf_node_split_and_insert(cursor_t* cursor, uint32_t key, row_t* value) {
     uint32_t new_page_num = get_unused_page_num(cursor->table->pager);
     void* new_node = get_page(cursor->table->pager, new_page_num);
     initialize_leaf_node(new_node);
+    *leaf_node_next_leaf(new_node) = *leaf_node_next_leaf(old_node);
+    *leaf_node_next_leaf(old_node) = new_page_num;
 
     for (int32_t i = LEAF_NODE_MAX_CELLS; 0 <= i; i--) {
         void* dest_node;
@@ -291,7 +299,8 @@ void leaf_node_split_and_insert(cursor_t* cursor, uint32_t key, row_t* value) {
         void* dest = leaf_node_cell(dest_node, index);
 
         if (i == cursor->cell_num) {
-            serialize_row(value, dest);
+            serialize_row(value, leaf_node_value(dest_node, index));
+            *leaf_node_key(dest_node, index) = key;
         } else if (cursor->cell_num < i) {
             memcpy(dest, leaf_node_cell(old_node, i - 1), LEAF_NODE_CELL_SIZE);
         } else {
