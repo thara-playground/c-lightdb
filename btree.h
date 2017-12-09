@@ -16,7 +16,10 @@ const uint32_t NODE_TYPE_SIZE = sizeof(uint8_t);
 const uint32_t NODE_TYPE_OFFSET = 0;
 const uint32_t IS_ROOT_SIZE = sizeof(uint8_t);
 const uint32_t IS_ROOT_OFFSET = NODE_TYPE_SIZE;
-const uint8_t COMMON_NODE_HEADER_SIZE = NODE_TYPE_SIZE + IS_ROOT_SIZE;
+const uint32_t PARENT_POINTER_SIZE = sizeof(uint32_t);
+const uint32_t PARENT_POINTER_OFFSET = IS_ROOT_OFFSET + IS_ROOT_SIZE;
+const uint8_t COMMON_NODE_HEADER_SIZE =
+        NODE_TYPE_SIZE + IS_ROOT_SIZE + PARENT_POINTER_SIZE;
 
 /*
  * Leaf Node Header Layout
@@ -53,6 +56,7 @@ const uint32_t INTERNAL_NODE_HEADER_SIZE = COMMON_NODE_HEADER_SIZE + INTERNAL_NO
 const uint32_t INTERNAL_NODE_KEY_SIZE = sizeof(uint32_t);
 const uint32_t INTERNAL_NODE_CHILD_SIZE = sizeof(uint32_t);
 const uint32_t INTERNAL_NODE_CELL_SIZE = INTERNAL_NODE_KEY_SIZE + INTERNAL_NODE_CHILD_SIZE;
+const uint32_t INTERNAL_NODE_MAX_CELLS = 3;
 
 node_type_t get_node_type(void* node) {
     uint8_t value = *((uint8_t*)(node + NODE_TYPE_OFFSET));
@@ -118,7 +122,7 @@ uint32_t* internal_node_child(void* node, uint32_t child_num) {
 }
 
 uint32_t* internal_node_key(void* node, uint32_t key_num) {
-    return internal_node_cell(node, key_num) + INTERNAL_NODE_CHILD_SIZE;
+    return (void*)internal_node_cell(node, key_num) + INTERNAL_NODE_CHILD_SIZE;
 }
 
 uint32_t get_node_max_key(void* node) {
@@ -146,3 +150,6 @@ void initialize_internal_node(void* node) {
     *internal_node_num_keys(node) = 0;
 }
 
+uint32_t* node_parent(void* node) {
+    return node + PARENT_POINTER_OFFSET;
+}
